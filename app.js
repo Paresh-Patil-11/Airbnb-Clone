@@ -6,8 +6,7 @@ const express = require("express");
 const app = express();
 const mongoose = require("mongoose");
 const Port = 8080;
-// const MONGO_URL = "mongodb://127.0.0.1:27017/wanderlust";
-const dbUrl = process.env.ATLAS_DB_URL
+const dbUrl = process.env.ATLAS_DB_URL;
 const path = require("path");
 const methodOverride = require("method-override");
 const ejsMate = require("ejs-mate");
@@ -23,13 +22,21 @@ const listingRouter = require("./routes/listing.js");
 const reviewRouter = require("./routes/review.js");
 const userRouter = require("./routes/user.js");
 
+// Security middleware - ADD THIS
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
+
 app.engine("ejs", ejsMate);
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 app.use(express.urlencoded({ extended: true }));
 app.use(methodOverride("_method"));
 app.use(express.static(path.join(__dirname, "/public")));
-// Removed: app.use(cookieParser("secretcode")); // Not needed with express-session
 
 const store = new MongoStore({
   mongoUrl: dbUrl,
@@ -37,6 +44,10 @@ const store = new MongoStore({
     secret: process.env.SECRET,
   },
   touchAfter: 24 * 3600,
+});
+
+store.on("error", (err) => {
+  console.log("Session store error:", err);
 });
 
 const sessionOptions = {
@@ -48,6 +59,7 @@ const sessionOptions = {
     expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
     maxAge: 7 * 24 * 60 * 60 * 1000,
     httpOnly: true,
+    secure: process.env.NODE_ENV === "production", // HTTPS only in production
   },
 };
 
@@ -71,10 +83,6 @@ app.use("/listings", listingRouter);
 app.use("/listings/:id/reviews", reviewRouter);
 app.use("/", userRouter);
 
-// app.get("/", (req, res) => {
-//   res.send("Hi, I am root.");
-// });
-
 app.use((req, res, next) => {
   next(new ExpressError(404, "Page not found"));
 });
@@ -86,7 +94,6 @@ app.use((err, req, res, next) => {
 
 async function main() {
   await mongoose.connect(dbUrl);
-    // await mongoose.connect(MONGO_URL);
   console.log("Connection to DB");
   app.listen(Port, () => {
     console.log(`Server running on port ${Port}`);
